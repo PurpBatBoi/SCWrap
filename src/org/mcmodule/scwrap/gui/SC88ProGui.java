@@ -245,6 +245,9 @@ public class SC88ProGui extends AbstractGui {
 		private int currentDisplayedScreen = -1;
 		
 		private Color backgroundColor, offColor, onColor;
+		private static final String LCD_BACKGROUND_HEX = "#07070D";
+		private static final String LCD_OFF_HEX = "#1C222B";
+		private static final String LCD_ON_HEX = "#85A8C2";
 		
 		private        final Font font = Font.decode("Arial").deriveFont(28f).deriveFont(getScaledTransform(1.2d));
 		
@@ -280,7 +283,7 @@ public class SC88ProGui extends AbstractGui {
 		public SCCanvas() {
 			super();
 			setPreferredSize(new Dimension(1280, 480));
-			setLCDColor(Color.getHSBColor(30f / 360f, 1f, 1f));
+			setLCDColorHex(LCD_BACKGROUND_HEX, LCD_OFF_HEX, LCD_ON_HEX);
 			this.part = "";
 			this.midich = "";
 			this.instrument = "";
@@ -348,19 +351,26 @@ public class SC88ProGui extends AbstractGui {
 			System.arraycopy(charArray, 0, this.currentDisplayedString, (16 - len) / 2 + (len & 1), len);
 		}
 
-		public void setLCDColor(Color color) {
-//			this.backgroundColor = color;
-//			this.offColor = new Color((int) (color.getRed() * 0.875), (int) (color.getGreen() * 0.875), (int) (color.getBlue() * 0.875));
-//			this.onColor  = new Color((int) (color.getRed() * 0.25 ), (int) (color.getGreen() * 0.25 ), (int) (color.getBlue() * 0.25 ));
-//			this.characterRenderer.setColor(this.backgroundColor, this.offColor, this.onColor);
-			// Emulates real Sound Canvas unit
-			int contrast = 12;
-			float con = 1f - (float) (Math.pow((contrast - 1) / 15d, 2.2d) * 0.25 + 0.015625);
-			this.backgroundColor = color;
-			color = this.offColor = new Color((int) (color.getRed() * con), (int) (color.getGreen() * con), (int) (color.getBlue() * con));
-			con = 1f - ((contrast + 1) / 32f + 0.25f);
-			this.onColor = new Color((int) (color.getRed() * con), (int) (color.getGreen() * con), (int) (color.getBlue() * con));
+		public void setLCDColorHex(String backgroundHex, String offHex, String onHex) {
+			this.backgroundColor = Color.decode(backgroundHex);
+			this.offColor = Color.decode(offHex);
+			this.onColor = Color.decode(onHex);
 			this.characterRenderer.setColor(this.backgroundColor, this.offColor, this.onColor);
+		}
+
+		public void setLCDColor(Color color) {
+			this.backgroundColor = color;
+			this.offColor = new Color((int) (color.getRed() * 0.875), (int) (color.getGreen() * 0.875), (int) (color.getBlue() * 0.875));
+			this.onColor  = new Color((int) (color.getRed() * 0.25 ), (int) (color.getGreen() * 0.25 ), (int) (color.getBlue() * 0.25 ));
+			this.characterRenderer.setColor(this.backgroundColor, this.offColor, this.onColor);
+			// Emulates real Sound Canvas unit
+//			int contrast = 12;
+//			float con = 1f - (float) (Math.pow((contrast - 1) / 15d, 2.2d) * 0.25 + 0.015625);
+//			this.backgroundColor = color;
+//			color = this.offColor = new Color((int) (color.getRed() * con), (int) (color.getGreen() * con), (int) (color.getBlue() * con));
+//			con = 1f - ((contrast + 1) / 32f + 0.25f);
+//			this.onColor = new Color((int) (color.getRed() * con), (int) (color.getGreen() * con), (int) (color.getBlue() * con));
+//			this.characterRenderer.setColor(this.backgroundColor, this.offColor, this.onColor);
 		}
 
 		public void paint(Graphics g) {
@@ -433,7 +443,7 @@ public class SC88ProGui extends AbstractGui {
 			
 			// Labels
 			g.setFont(this.font);
-			g.setColor(Color.black);
+			g.setColor(this.onColor);
 			AffineTransform transform = g.getTransform();
 			FontMetrics fontMetrics = g.getFontMetrics();
 			g.translate(0, fontMetrics.getAscent() * 0.2d);
