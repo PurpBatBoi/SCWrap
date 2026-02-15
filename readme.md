@@ -1,6 +1,26 @@
 # SCWrap
 SCWrap wraps Roland's SCCore.dll from the Sound Canvas VA plugin. It restores support for 2 MIDI ports and XG mode by patching code.
 
+## Build
+
+Use the Gradle wrapper (no local Gradle install required):
+
+```powershell
+.\gradlew.bat clean fatJar
+```
+
+Output fat jar:
+
+```text
+build/*-all.jar
+```
+
+Run:
+
+```powershell
+java -jar build/<artifact>-all.jar --help
+```
+
 ## Usage
 ```
   -r, --rate            <sample rate>   Set sample rate (default: 32000)

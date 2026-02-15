@@ -1,0 +1,65 @@
+plugins {
+    id "java"
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src"]
+            include "org/**/*.java"
+        }
+        resources {
+            srcDirs = ["src"]
+            exclude "**/*.java"
+        }
+    }
+}
+
+dependencies {
+    implementation files(
+        "libs/jna-5.10.0.jar",
+        "libs/jna-platform-5.10.0.jar"
+    )
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release.set(8)
+    options.compilerArgs += ["-Xlint:-options"]
+}
+
+tasks.named("jar", Jar) {
+    manifest {
+        attributes(
+            "Main-Class": "org.mcmodule.scwrap.Main"
+        )
+    }
+}
+
+tasks.register("fatJar", Jar) {
+    group = "build"
+    description = "Assembles a runnable jar that includes runtime dependencies."
+    dependsOn tasks.named("classes")
+
+    destinationDirectory.set(layout.buildDirectory)
+    archiveClassifier.set("all")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    manifest {
+        attributes(
+            "Main-Class": "org.mcmodule.scwrap.Main"
+        )
+    }
+
+    from(sourceSets.main.output)
+    from {
+        configurations.runtimeClasspath.collect { file ->
+            file.isDirectory() ? file : zipTree(file)
+        }
+    }
+}
