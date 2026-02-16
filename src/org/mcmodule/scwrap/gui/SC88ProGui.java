@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.awt.image.BufferedImage;
+import java.awt.image.BufferStrategy;
 import javax.imageio.ImageIO;
 
 import javax.swing.DefaultButtonModel;
@@ -56,6 +57,7 @@ public class SC88ProGui extends AbstractGui {
 	private static final long serialVersionUID = 7683827167361170313L;
 //	private final SoftSynth softSynth;
 	private final SCCanvas canvas;
+	private final SCPanel panel;
 	private final PacketDecoder[] packetDecoder = new PacketDecoder[6];
 	private TestModeDisplay testModeDisplay;
 
@@ -66,7 +68,8 @@ public class SC88ProGui extends AbstractGui {
 		super(sc, tgModule, version);
 //		this.softSynth = softSynth;
 		this.canvas = new SCCanvas();
-		add(this.canvas);
+		this.panel = new SCPanel(this.canvas);
+		add(this.panel);
 		pack();
 		setTitle("SCWrap");
 		setResizable(false);
@@ -239,7 +242,7 @@ public class SC88ProGui extends AbstractGui {
 		this.gain = Math.max(Math.min(gain, 1f), 0f);
 	}
 
-	public class SCCanvas extends JPanel implements Runnable {
+	public class SCCanvas extends Canvas implements Runnable {
 
 		private static final long serialVersionUID = 5413712560816394611L;
 		private final long[] screenData = new long[] {0x0000000000000000L, 0x0000000000000000L, 0x0000000000000000L, 0x000000000000FFFFL};
@@ -289,13 +292,11 @@ public class SC88ProGui extends AbstractGui {
 		private long bitmapTimer = Long.MAX_VALUE;
 		private boolean inspectAll;
 		private int selectedPart = 0;
-		private BufferedImage backgroundImage;
-		private BufferedImage lcdBuffer;
 		
 		public SCCanvas() {
 			super();
-			setLayout(null);
-			setPreferredSize(new Dimension(1200, 425));
+			setPreferredSize(new Dimension(701, 262));
+			setIgnoreRepaint(true);
 			setLCDColorHex(LCD_BACKGROUND_HEX, LCD_OFF_HEX, LCD_ON_HEX);
 			this.part = "";
 			this.midich = "";
@@ -315,38 +316,7 @@ public class SC88ProGui extends AbstractGui {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			try {
-				this.backgroundImage = ImageIO.read(SCCanvas.class.getResource("/graphics/main_ui.png"));
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
 
-			// Controls
-			JToggleButton allButton = new JToggleButton("ALL");
-			allButton.setModel(new DefaultButtonModel() {
-				private static final long serialVersionUID = 7877450539517810433L;
-				@Override
-				public boolean isSelected() {
-					return isInspectAll();
-				}
-			});
-			allButton.addActionListener(l -> setInspectAll(!isInspectAll()));
-			allButton.setBounds(1068, 62, 60, 30);
-			add(allButton);
-
-			JButton leftButton = new JButton("←");
-			leftButton.setBounds(1068, 112, 45, 30);
-			leftButton.addActionListener(l -> setSelectedPart(getSelectedPart() - 1));
-			add(leftButton);
-
-			JButton rightButton = new JButton("→");
-			rightButton.setBounds(1068, 161, 45, 30);
-			rightButton.addActionListener(l -> setSelectedPart(getSelectedPart() + 1));
-			add(rightButton);
-
-			VolumeKnob volumeKnob = new VolumeKnob();
-			volumeKnob.setBounds(48, 121, 128, 128);
-			add(volumeKnob);
 		}
 		
 		@Override
@@ -376,12 +346,18 @@ public class SC88ProGui extends AbstractGui {
 //			this.bitmapEnd = 144;
 			this.bitmapDelay = 50;
 			this.bitmapTimer = System.currentTimeMillis();
-//			this.createBufferStrategy(2);
+			createBufferStrategy(2);
 			while (!Thread.currentThread().isInterrupted()) {
-//				BufferStrategy bufferStrategy = this.getBufferStrategy();
-//				paint(bufferStrategy.getDrawGraphics());
-//				bufferStrategy.show();
-				repaint();
+				BufferStrategy bufferStrategy = getBufferStrategy();
+				if (bufferStrategy != null) {
+					Graphics2D g = (Graphics2D) bufferStrategy.getDrawGraphics();
+					try {
+						doPaint(g);
+					} finally {
+						g.dispose();
+					}
+					bufferStrategy.show();
+				}
 				try {
 					Thread.sleep(1000L / 30L);
 				} catch (InterruptedException e) {
@@ -420,43 +396,23 @@ public class SC88ProGui extends AbstractGui {
 		}
 
 		@Override
-		protected void paintComponent(Graphics g) {
-			super.paintComponent(g);
-			if (this.backgroundImage != null) {
-				Graphics2D g2d = (Graphics2D) g;
-				g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-				g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-				g2d.drawImage(this.backgroundImage, 0, 0, 1200, 425, this);
-			}
+		public void paint(Graphics g) {
 			doPaint((Graphics2D) g);
+		}
+
+		@Override
+		public void update(Graphics g) {
+			paint(g);
 		}
 		
 		private void doPaint(Graphics2D g) {
-			// LCD Coordinates and Scale
-			int lcdX = 217; 
-			int lcdY = 66;
-			int lcdW = 701;
-			int lcdH = 262;
-			
-			if (this.lcdBuffer == null || this.lcdBuffer.getWidth() != LCD_WIDTH || this.lcdBuffer.getHeight() != LCD_HEIGHT) {
-				this.lcdBuffer = new BufferedImage(LCD_WIDTH, LCD_HEIGHT, BufferedImage.TYPE_INT_ARGB);
-			}
-			
-			Graphics2D gLCD = this.lcdBuffer.createGraphics();
-			
+			g.scale(getWidth() / (double) LCD_WIDTH, getHeight() / (double) LCD_HEIGHT);
 			this.lock.lock();
 			try {
-				renderCanvas(gLCD);
+				renderCanvas(g);
 			} finally {
 				this.lock.unlock();
 			}
-			gLCD.dispose();
-			
-			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-			g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			
-			g.drawImage(this.lcdBuffer, lcdX, lcdY, lcdW, lcdH, this);
 		}
 
 		protected void renderCanvas(Graphics2D g) {
@@ -958,6 +914,73 @@ public class SC88ProGui extends AbstractGui {
 			this.selectedPart = selectedPart;
 		}
 
+		private AffineTransform getScaledTransform(double scale) {
+			AffineTransform transform = new AffineTransform();
+			transform.scale(scale, scale);
+			return transform;
+		}
+
+	}
+
+	public class SCPanel extends JPanel {
+
+		private static final long serialVersionUID = -5538411129818503119L;
+		private final BufferedImage backgroundImage;
+
+		public SCPanel(SCCanvas canvas) {
+			super(null);
+			setPreferredSize(new Dimension(1200, 425));
+
+			BufferedImage image = null;
+			try {
+				image = ImageIO.read(SCPanel.class.getResource("/graphics/main_ui.png"));
+			} catch (IOException | IllegalArgumentException e) {
+				e.printStackTrace();
+			}
+			this.backgroundImage = image;
+
+			canvas.setBounds(217, 66, 701, 262);
+			add(canvas);
+
+			JToggleButton allButton = new JToggleButton("ALL");
+			allButton.setModel(new DefaultButtonModel() {
+				private static final long serialVersionUID = 7877450539517810433L;
+
+				@Override
+				public boolean isSelected() {
+					return SC88ProGui.this.canvas.isInspectAll();
+				}
+			});
+			allButton.addActionListener(l -> SC88ProGui.this.canvas.setInspectAll(!SC88ProGui.this.canvas.isInspectAll()));
+			allButton.setBounds(1068, 62, 60, 30);
+			add(allButton);
+
+			JButton leftButton = new JButton("\u2190");
+			leftButton.setBounds(1068, 112, 45, 30);
+			leftButton.addActionListener(l -> SC88ProGui.this.canvas.setSelectedPart(SC88ProGui.this.canvas.getSelectedPart() - 1));
+			add(leftButton);
+
+			JButton rightButton = new JButton("\u2192");
+			rightButton.setBounds(1068, 161, 45, 30);
+			rightButton.addActionListener(l -> SC88ProGui.this.canvas.setSelectedPart(SC88ProGui.this.canvas.getSelectedPart() + 1));
+			add(rightButton);
+
+			VolumeKnob volumeKnob = new VolumeKnob();
+			volumeKnob.setBounds(48, 121, 128, 128);
+			add(volumeKnob);
+		}
+
+		@Override
+		protected void paintComponent(Graphics g) {
+			super.paintComponent(g);
+			if (this.backgroundImage != null) {
+				Graphics2D g2d = (Graphics2D) g;
+				g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+				g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+				g2d.drawImage(this.backgroundImage, 0, 0, 1200, 425, this);
+			}
+		}
+
 		private class VolumeKnob extends JComponent {
 			private static final long serialVersionUID = 5843085051764598711L;
 			private int dragStartY;
@@ -1048,15 +1071,6 @@ public class SC88ProGui extends AbstractGui {
 				}
 			}
 		}
-
-		private AffineTransform getScaledTransform(double scale) {
-			AffineTransform transform = new AffineTransform();
-			transform.scale(scale, scale);
-			return transform;
-		}
-
 	}
-	
-
 
 }
