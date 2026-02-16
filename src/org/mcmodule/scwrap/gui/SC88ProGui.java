@@ -2,7 +2,7 @@ package org.mcmodule.scwrap.gui;
 
 import java.awt.*;
 import java.awt.geom.AffineTransform;
-import java.awt.image.BufferStrategy;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -11,13 +11,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 
 import javax.swing.DefaultButtonModel;
 import javax.swing.JButton;
-import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
-import javax.swing.SwingUtilities;
 
 import org.mcmodule.scwrap.SoundCanvas;
 import org.mcmodule.scwrap.util.PacketDecoder;
@@ -27,6 +27,10 @@ import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.WinDef.HMODULE;
 
 public class SC88ProGui extends AbstractGui {
+	
+	static {
+		System.setProperty("sun.java2d.uiScale", "1.0");
+	}
 	
 	private static final byte[][] DUMP_INSTRUMENTS_SYSEX = {
 			"\360\101\020\102\021\014\000\001\000\000\000\163\367".getBytes(StandardCharsets.ISO_8859_1),
@@ -50,7 +54,7 @@ public class SC88ProGui extends AbstractGui {
 	private final SCCanvas canvas;
 	private final PacketDecoder[] packetDecoder = new PacketDecoder[6];
 	private TestModeDisplay testModeDisplay;
-	private TempControlPanel controlPanel;
+
 	private int dumpInstruments = -1;
 	
 	public SC88ProGui(SoundCanvas sc, HMODULE tgModule, SCCoreVersion version) {
@@ -184,22 +188,11 @@ public class SC88ProGui extends AbstractGui {
 	@Override@SuppressWarnings("deprecation")
 	public void show() {
 		super.show();
-		if (this.controlPanel == null) {
-			TempControlPanel controlPanel = this.controlPanel = new TempControlPanel();
-			SwingUtilities.invokeLater(() -> {
-				controlPanel.setLocation(getX() + getContentPane().getWidth(), getY());
-				controlPanel.setVisible(true);
-			});
-		}
 	}
 	
 	@Override@SuppressWarnings("deprecation")
 	public void hide() {
 		super.hide();
-		if (this.controlPanel != null) {
-			this.controlPanel.dispose();
-			this.controlPanel = null;
-		}
 		if (this.testModeDisplay != null) {
 			this.testModeDisplay.dispose();
 		}
@@ -229,7 +222,7 @@ public class SC88ProGui extends AbstractGui {
 		this.canvas.showSystemMessage(str);
 	}
 
-	public class SCCanvas extends Canvas implements Runnable {
+	public class SCCanvas extends JPanel implements Runnable {
 
 		private static final long serialVersionUID = 5413712560816394611L;
 		private final long[] screenData = new long[] {0x0000000000000000L, 0x0000000000000000L, 0x0000000000000000L, 0x000000000000FFFFL};
@@ -279,10 +272,13 @@ public class SC88ProGui extends AbstractGui {
 		private long bitmapTimer = Long.MAX_VALUE;
 		private boolean inspectAll;
 		private int selectedPart = 0;
+		private BufferedImage backgroundImage;
+		private BufferedImage lcdBuffer;
 		
 		public SCCanvas() {
 			super();
-			setPreferredSize(new Dimension(1280, 480));
+			setLayout(null);
+			setPreferredSize(new Dimension(1200, 425));
 			setLCDColorHex(LCD_BACKGROUND_HEX, LCD_OFF_HEX, LCD_ON_HEX);
 			this.part = "";
 			this.midich = "";
@@ -302,6 +298,34 @@ public class SC88ProGui extends AbstractGui {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+			try {
+				this.backgroundImage = ImageIO.read(SCCanvas.class.getResource("/graphics/main_ui.png"));
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+
+			// Controls
+			JToggleButton allButton = new JToggleButton("ALL");
+			allButton.setModel(new DefaultButtonModel() {
+				private static final long serialVersionUID = 7877450539517810433L;
+				@Override
+				public boolean isSelected() {
+					return isInspectAll();
+				}
+			});
+			allButton.addActionListener(l -> setInspectAll(!isInspectAll()));
+			allButton.setBounds(1068, 62, 60, 30);
+			add(allButton);
+
+			JButton leftButton = new JButton("←");
+			leftButton.setBounds(1068, 112, 45, 30);
+			leftButton.addActionListener(l -> setSelectedPart(getSelectedPart() - 1));
+			add(leftButton);
+
+			JButton rightButton = new JButton("→");
+			rightButton.setBounds(1068, 161, 45, 30);
+			rightButton.addActionListener(l -> setSelectedPart(getSelectedPart() + 1));
+			add(rightButton);
 		}
 		
 		@Override
@@ -331,11 +355,12 @@ public class SC88ProGui extends AbstractGui {
 //			this.bitmapEnd = 144;
 			this.bitmapDelay = 50;
 			this.bitmapTimer = System.currentTimeMillis();
-			this.createBufferStrategy(2);
+//			this.createBufferStrategy(2);
 			while (!Thread.currentThread().isInterrupted()) {
-				BufferStrategy bufferStrategy = this.getBufferStrategy();
-				paint(bufferStrategy.getDrawGraphics());
-				bufferStrategy.show();
+//				BufferStrategy bufferStrategy = this.getBufferStrategy();
+//				paint(bufferStrategy.getDrawGraphics());
+//				bufferStrategy.show();
+				repaint();
 				try {
 					Thread.sleep(1000L / 30L);
 				} catch (InterruptedException e) {
@@ -373,19 +398,44 @@ public class SC88ProGui extends AbstractGui {
 //			this.characterRenderer.setColor(this.backgroundColor, this.offColor, this.onColor);
 		}
 
-		public void paint(Graphics g) {
+		@Override
+		protected void paintComponent(Graphics g) {
+			super.paintComponent(g);
+			if (this.backgroundImage != null) {
+				Graphics2D g2d = (Graphics2D) g;
+				g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+				g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+				g2d.drawImage(this.backgroundImage, 0, 0, 1200, 425, this);
+			}
 			doPaint((Graphics2D) g);
 		}
 		
 		private void doPaint(Graphics2D g) {
-			g.scale(getWidth() / (double) LCD_WIDTH, getHeight() / (double) LCD_HEIGHT);
+			// LCD Coordinates and Scale
+			int lcdX = 217; 
+			int lcdY = 66;
+			int lcdW = 701;
+			int lcdH = 262;
+			
+			if (this.lcdBuffer == null || this.lcdBuffer.getWidth() != LCD_WIDTH || this.lcdBuffer.getHeight() != LCD_HEIGHT) {
+				this.lcdBuffer = new BufferedImage(LCD_WIDTH, LCD_HEIGHT, BufferedImage.TYPE_INT_ARGB);
+			}
+			
+			Graphics2D gLCD = this.lcdBuffer.createGraphics();
+			
 			this.lock.lock();
 			try {
-				renderCanvas(g);
+				renderCanvas(gLCD);
 			} finally {
 				this.lock.unlock();
 			}
-			g.dispose();
+			gLCD.dispose();
+			
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			
+			g.drawImage(this.lcdBuffer, lcdX, lcdY, lcdW, lcdH, this);
 		}
 
 		protected void renderCanvas(Graphics2D g) {
@@ -895,57 +945,6 @@ public class SC88ProGui extends AbstractGui {
 
 	}
 	
-	class TempControlPanel extends JFrame {
 
-		private static final long serialVersionUID = -5853617061492868854L;
-
-		public TempControlPanel() {
-			setTitle("Temp control Panel");
-			setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-
-			setSize(220, 180);
-			setLocationRelativeTo(null);
-
-			JPanel root = new JPanel(new GridBagLayout());
-			setContentPane(root);
-
-			JPanel centerPanel = new JPanel();
-			centerPanel.setLayout(new BorderLayout(0, 10));
-
-			JToggleButton allButton = new JToggleButton("ALL");
-			allButton.setModel(new DefaultButtonModel() {
-				
-				private static final long serialVersionUID = 7877450539517810433L;
-
-				@Override
-				public boolean isSelected() {
-					return SC88ProGui.this.canvas.isInspectAll();
-				}
-			});
-			allButton.addActionListener(l -> SC88ProGui.this.canvas.setInspectAll(!SC88ProGui.this.canvas.isInspectAll()));
-			allButton.setPreferredSize(new Dimension(120, 35));
-			centerPanel.add(allButton, BorderLayout.NORTH);
-
-			JPanel bottomPanel = new JPanel(new GridLayout(1, 2, 10, 0)); // 间距缩小
-
-			JButton leftButton = new JButton("←");
-			JButton rightButton = new JButton("→");
-
-			leftButton.setPreferredSize(new Dimension(50, 35));
-			rightButton.setPreferredSize(new Dimension(50, 35));
-			
-			leftButton.addActionListener(l -> SC88ProGui.this.canvas.setSelectedPart(SC88ProGui.this.canvas.getSelectedPart() - 1));
-			rightButton.addActionListener(l -> SC88ProGui.this.canvas.setSelectedPart(SC88ProGui.this.canvas.getSelectedPart() + 1));
-
-			bottomPanel.add(leftButton);
-			bottomPanel.add(rightButton);
-
-			centerPanel.add(bottomPanel, BorderLayout.CENTER);
-
-			root.add(centerPanel);
-
-			setVisible(true);
-		}
-	}
 
 }

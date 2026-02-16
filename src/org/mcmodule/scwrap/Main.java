@@ -40,6 +40,7 @@ public class Main {
 	private static boolean midiTxNoDelay = false;
 	
 	public static void main(String[] args) {
+		System.setProperty("sun.java2d.uiScale", "1.0");
 		// IDK How it works, but seems can improve timing in Windows
 		Thread thread = new Thread() {
 			@Override
