@@ -2,6 +2,9 @@ package org.mcmodule.scwrap.gui;
 
 import java.awt.*;
 import java.awt.geom.AffineTransform;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,6 +19,7 @@ import javax.imageio.ImageIO;
 
 import javax.swing.DefaultButtonModel;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
 
@@ -56,6 +60,7 @@ public class SC88ProGui extends AbstractGui {
 	private TestModeDisplay testModeDisplay;
 
 	private int dumpInstruments = -1;
+	private volatile float gain = 1f;
 	
 	public SC88ProGui(SoundCanvas sc, HMODULE tgModule, SCCoreVersion version) {
 		super(sc, tgModule, version);
@@ -79,6 +84,10 @@ public class SC88ProGui extends AbstractGui {
 	
 	@Override
 	public void process(float[] samples) {
+		float gain = Math.max(Math.min(this.gain, 1f), 0f);
+		for (int i = 0, len = samples.length; i < len; i++) {
+			samples[i] *= gain;
+		}
 		if (this.dumpInstruments >= 0) {
 			SoundCanvas sc = this.sc;
 			this.canvas.showSystemMessage("Please wait.....");
@@ -222,6 +231,14 @@ public class SC88ProGui extends AbstractGui {
 		this.canvas.showSystemMessage(str);
 	}
 
+	private float getGain() {
+		return this.gain;
+	}
+
+	private void setGain(float gain) {
+		this.gain = Math.max(Math.min(gain, 1f), 0f);
+	}
+
 	public class SCCanvas extends JPanel implements Runnable {
 
 		private static final long serialVersionUID = 5413712560816394611L;
@@ -326,6 +343,10 @@ public class SC88ProGui extends AbstractGui {
 			rightButton.setBounds(1068, 161, 45, 30);
 			rightButton.addActionListener(l -> setSelectedPart(getSelectedPart() + 1));
 			add(rightButton);
+
+			VolumeKnob volumeKnob = new VolumeKnob();
+			volumeKnob.setBounds(48, 121, 128, 128);
+			add(volumeKnob);
 		}
 		
 		@Override
@@ -935,6 +956,97 @@ public class SC88ProGui extends AbstractGui {
 			if (this.inspectAll)
 				return;
 			this.selectedPart = selectedPart;
+		}
+
+		private class VolumeKnob extends JComponent {
+			private static final long serialVersionUID = 5843085051764598711L;
+			private int dragStartY;
+			private float dragStartGain;
+
+			VolumeKnob() {
+				setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+				setToolTipText(getTooltipTextForGain());
+
+				MouseAdapter mouseAdapter = new MouseAdapter() {
+					@Override
+					public void mousePressed(MouseEvent e) {
+						dragStartY = e.getY();
+						dragStartGain = SC88ProGui.this.getGain();
+					}
+
+					@Override
+					public void mouseDragged(MouseEvent e) {
+						int deltaY = dragStartY - e.getY();
+						float next = dragStartGain + deltaY / 120f;
+						updateGain(next);
+					}
+
+					@Override
+					public void mouseWheelMoved(MouseWheelEvent e) {
+						float next = SC88ProGui.this.getGain() - (float) (e.getPreciseWheelRotation() * 0.03f);
+						updateGain(next);
+					}
+
+					@Override
+					public void mouseClicked(MouseEvent e) {
+						if (e.getButton() == MouseEvent.BUTTON1 && e.getClickCount() == 2) {
+							updateGain(1f);
+						}
+					}
+				};
+
+				addMouseListener(mouseAdapter);
+				addMouseMotionListener(mouseAdapter);
+				addMouseWheelListener(mouseAdapter);
+			}
+
+			private String getTooltipTextForGain() {
+				return String.format("Volume %.0f%%", SC88ProGui.this.getGain() * 100f);
+			}
+
+			private void updateGain(float gain) {
+				SC88ProGui.this.setGain(gain);
+				setToolTipText(getTooltipTextForGain());
+				repaint();
+			}
+
+			@Override
+			protected void paintComponent(Graphics g) {
+				super.paintComponent(g);
+				Graphics2D g2 = (Graphics2D) g.create();
+				try {
+					g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+					int w = getWidth();
+					int h = getHeight();
+					int size = Math.min(w, h) - 2;
+					int x = (w - size) / 2;
+					int y = (h - size) / 2;
+					int cx = x + size / 2;
+					int cy = y + size / 2;
+					int radius = size / 2;
+					float gain = SC88ProGui.this.getGain();
+
+					g2.setColor(new Color(45, 45, 50, 230));
+					g2.fillOval(x, y, size, size);
+					g2.setColor(new Color(135, 135, 145, 245));
+					g2.drawOval(x, y, size, size);
+
+					g2.setColor(new Color(95, 175, 210, 180));
+					g2.setStroke(new BasicStroke(2f));
+					g2.drawArc(x + 3, y + 3, size - 6, size - 6, 225, (int) (-270f * gain));
+
+					double angle = Math.toRadians(225d - 270d * gain);
+					int pointerLength = (int) (radius * 0.62f);
+					int px = cx + (int) (Math.cos(angle) * pointerLength);
+					int py = cy - (int) (Math.sin(angle) * pointerLength);
+					g2.setColor(new Color(235, 235, 235, 250));
+					g2.drawLine(cx, cy, px, py);
+					g2.fillOval(cx - 2, cy - 2, 4, 4);
+				} finally {
+					g2.dispose();
+				}
+			}
 		}
 
 		private AffineTransform getScaledTransform(double scale) {
